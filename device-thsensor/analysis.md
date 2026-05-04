@@ -40,6 +40,23 @@ That's it.
 fetchState responses; integration reads top-level only. May want to also
 read from `state.loraInfo` if missing top-level.
 
+## CONFIRMED via captured `THSensor.DataRecord` push events (Guest, Kids_Temp, 2026-05-04)
+
+The DataRecord event type is distinct from periodic `Report`. Payload:
+```json
+{"records":[{"temperature":19.7,"humidity":56,"time":"2026-05-04T15:12:59Z"}]}
+```
+
+Each record is a time-series sample with its own timestamp. The
+integration appears to handle this via `_is_message_acceptable` in
+`yolink-api/yolink/mqtt_client.py` (`THSensor.DataRecord` is whitelisted)
+but it's worth verifying whether HA actually surfaces these historical
+samples or only the latest. If only latest, this is a candidate for
+exposing as historical data points (longer-term sensor history).
+
+The captured records confirm `temperature` is in Celsius and `humidity`
+is integer or float percent -- matches existing HA exposure.
+
 ## Suggested PR breakdown
 
 1. **PR #1 (highest impact, smallest diff):** Add 5 alarm binary_sensors

@@ -4,112 +4,78 @@ Goal: find fields YoLink devices emit but the Home Assistant `yolink`
 integration ignores. Each one is a small PR (like #168742 for SprinklerV2)
 that benefits every user of that device.
 
-## Layout
+See [`README.md`](README.md) for the toolset and workflow.
 
-```
-discover_all.py             # one-shot snapshot of all devices
-mqtt_listen_all.py [min]    # MQTT real-time push capture (default 60 min)
-requirements.txt            # aiohttp, aiomqtt, python-dotenv
-devices.json                # sanitized device list (no tokens)
-device-thsensor/            # one folder per YoLink device "type"
-    snapshots/<name>.json   # one JSON per device, written by discover_all
-    events/<name>.jsonl     # MQTT push events, written by mqtt_listen_all
-    analysis.md             # current HA exposure + confirmed missing fields
-device-doorsensor/
-device-leaksensor/
-device-outlet/
-device-motionsensor/
-device-finger/
-device-smartremoter/
-device-switch/
-device-manipulator/         # currently empty (no Manipulator devices)
-device-sprinklerv2/         # pre-existing (PR #168742)
-device-other/               # Hub etc.
-```
+## Tier system
 
-## Workflow
+Each candidate PR is tagged by VERIFICATION STATUS, not optimism:
 
-```bash
-pip install -r requirements.txt          # one time
+- **VERIFIED** -- field reaches non-default value in real captured data
+- **NEEDS VERIFICATION** -- field present in raw, but never seen non-default
+- **INVALID** -- live test proved field is always 0 / never populates
 
-python3 discover_all.py                  # ~30s, fills snapshots/
-python3 mqtt_listen_all.py 60            # 1h MQTT capture, fills events/
+## VERIFIED PRs (safe to write now)
 
-# Then per device type, list every key path ever seen:
-TYPE=outlet
-python3 -c "
-import json, glob
-from collections import Counter
-def walk(d, p=''):
-    if isinstance(d, dict):
-        for k,v in d.items(): yield from walk(v, f'{p}.{k}' if p else k)
-    elif isinstance(d, list):
-        for v in d: yield from walk(v, f'{p}[]')
-    else: yield p
-seen = Counter()
-for f in glob.glob(f'device-$TYPE/snapshots/*.json'):
-    d = json.load(open(f))
-    for s in (d.get('getState'), d.get('fetchState')):
-        if s:
-            for k in walk(s.get('data', {})): seen[k] += 1
-for f in glob.glob(f'device-$TYPE/events/*.jsonl'):
-    for line in open(f):
-        e = json.loads(line)
-        for k in walk(e.get('payload', {}).get('data', {})): seen[k] += 1
-for k,n in sorted(seen.items()): print(f'{n:4d}  {k}')
-"
-```
+| PR | Device types | Source | Notes |
+|----|---|---|---|
+| **`last_state_change` timestamp sensor** | DoorSensor, LeakSensor, MotionSensor, THSensor | `state.stateChangedAt` (epoch ms) | Universal across types. Confirmed updating: captured DoorSensor.Alert with `stateChangedAt: 1777908102507` matching the wall-clock event time. ~30 line PR, 4 device types covered. Highest-value single PR. |
+| **Add YS6602-UC/EC to `coreTemperature` exists_fn** | Outlet | `state.coreTemperature` (snapshot showed `37` on `plug_misc`) | 3-line diff in `sensor.py`. Existing entity simply needs YS6602 added to its `exists_fn` whitelist (currently YS6614 only). |
 
-## Confirmed PR opportunities (after one snapshot run)
+## NEEDS VERIFICATION (do not PR until field observed non-default)
 
-Ranked by impact-per-line-of-diff. Full detail in each `analysis.md`.
+| Candidate | Device types | Why needs verify |
+|---|---|---|
+| 5 THSensor alarm binary_sensors (`lowBattery`, `lowTemp`, `highTemp`, `lowHumidity`, `highHumidity`) | THSensor | All 12 of my sensors emit these flags but all are `false`. Need to force one true (tighten a `tempLimit`) or wait for a real condition. |
+| 5 Outlet `alertType.*` binary_sensors (`overload`, `highLoad`, `lowLoad`, `highTemperature`, `remind`) | Outlet | Same situation. `overload` would require unsafe load to test. |
+| LeakSensor `detectorError` / `freezeError` | LeakSensor | `detectorError` already used internally for availability. Verify by unplugging probe. |
+| Finger `fingerprintId` press attribution | Finger | `Finger.setState` event captured does NOT contain fingerprint ID. Need to capture press-via-fingerprint (not app) and look for other event types. |
+| THSensor `DataRecord` historical samples | THSensor | Confirmed event type fires with array of `{time,temperature,humidity}` samples. Need to check whether HA surfaces these or only latest. |
+| `alertType` field in DoorSensor push events | DoorSensor | Captured `"alertType":"normal"` in `DoorSensor.Alert`. Other values (e.g. `"tamper"`) need to be observed. |
 
-### TIER A - one/two-line PRs, immediate value
+## INVALID (verified 2026-05-04 -- do NOT PR)
 
-| PR                                                               | File              | Rationale |
-|------------------------------------------------------------------|-------------------|-----------|
-| **Add YS6604-UC/EC to `POWER_SUPPORT_MODELS`**                   | `sensor.py`       | YS6604 outdoor plug reports `power` and `watt` already; integration ignores it. Affects every YS6604 user worldwide. |
-| **Add YS6602-UC/EC to `coreTemperature` exists_fn**              | `sensor.py`       | YS6602 reports coreTemperature (37 in your snapshot). Currently only YS6614 exposes this. |
-| **Switch (YS5706) power+watt sensors**                           | `sensor.py`       | YS5706 reports `power` & `watt` like outlets but `Switch` device type isn't in any power model list. |
+| Candidate | Device | Why invalid |
+|---|---|---|
+| ~~Add YS6604-UC/EC to `POWER_SUPPORT_MODELS`~~ | YS6604 outdoor plug | Live load test (`poll_live.py "Attic Fan Power" 15`) with fans drawing real load: `power=0, watt=0` across 4 polls. Push events on toggle also lack `power`/`watt` fields. Firmware schema field present, no current-sensing hardware. |
+| ~~Switch (YS5706) power+watt sensors~~ | YS5706 wall switch | Same: `power=0, watt=0` even when state=open. No measurement chip. |
 
-### TIER B - small PRs, multiple new entities
+## Configuration entities (need yolink-api setter support first)
 
-| PR                                                               | Notes |
-|------------------------------------------------------------------|-------|
-| **THSensor 5 alarm binary_sensors** (`lowBattery`, `lowTemp`, `highTemp`, `lowHumidity`, `highHumidity`) | All 12 of your THSensors emit these flags. PROBLEM device class. |
-| **Outlet 5 alertType binary_sensors** (`overload`, `highLoad`, `lowLoad`, `highTemperature`, `remind`) | Both YS6602 and YS6604 emit these. Real safety alarms currently invisible. |
-| **LeakSensor `detector_error` + `freeze_error` binary_sensors**  | Already used internally for availability suppression on detectorError; surface them so users know WHY. `freezeError` is unique alarm not exposed anywhere. |
-| **Universal `last_state_change` timestamp sensor** (DoorSensor / LeakSensor / MotionSensor / THSensor) | All emit `state.stateChangedAt` (epoch ms). One helper, four device types, hugely useful for "x has been open/wet/quiet for N min" automations. |
+These would all be useful but require new methods in the upstream
+`yolink-api` library. Defer until that lands:
 
-### TIER C - configuration entities (need yolink-api setter support first)
+- THSensor temperature/humidity limits + correction (4 numbers)
+- Outlet `delay.on`/`delay.off` countdown timers (number)
+- Outlet `powerLimitHigh`/`Low` thresholds (number)
+- MotionSensor `nomotionDelay`, `sensitivity`, `ledAlarm`
+- Switch `pulseMode.enable` + `pulseMode.duration`
+- LeakSensor `beep`, `sensitivity`
 
-| PR                              | Notes |
-|---------------------------------|-------|
-| THSensor temperature/humidity limits + correction (4 numbers) | adjustable thresholds |
-| Outlet `delay.on`/`delay.off` countdown timers (number)        |  |
-| Outlet `powerLimitHigh`/`Low` thresholds (number)              | source of overload alarm |
-| MotionSensor `nomotionDelay`, `sensitivity`, `ledAlarm`        |  |
-| Switch `pulseMode.enable` + `duration`                         | momentary-press relay mode |
-| LeakSensor `beep`, `sensitivity`                               |  |
+## Critical methodology lesson
 
-### Open questions (need MQTT capture)
+Initial scan based on snapshot field-name presence flagged 3 PRs as
+"Tier A" highest-impact. Live load testing revealed **2 of 3 were
+invalid** because the device firmware exposes the field schema but
+lacks the measurement hardware (always reads 0).
 
-- Finger: does press event include `fingerprintId` / `userId`? - run `mqtt_listen_all.py` and press both Fingers via app + via fingerprint.
-- SmartRemoter: are all `keyMask` values currently mapped in `device_trigger.py`?
-- Outlet `state.power` - does it report non-zero values when load is on (snapshot caught all at 0)?
+**Field present in raw JSON != hardware actually measures it.**
+
+Workflow rule: for ANY PR adding a sensor that surfaces a numeric
+device field, verify the field reaches a non-zero / non-default value
+under expected conditions BEFORE writing the PR. Use `poll_live.py`
+while exercising the device.
+
+For binary alarm flags, force the alarm to fire (or wait for it
+naturally) before assuming the field works. For state-derived sensors
+(e.g. `stateChangedAt` timestamps), the snapshot already proves they
+update -- those are safe to PR directly.
 
 ## Process for filing PRs
 
-For each TIER A/B item:
+For each VERIFIED item:
 
-1. Branch off `home-assistant/core` `dev` like the SprinklerV2 PR did.
+1. Branch off `home-assistant/core` `dev` (`git checkout -b yolink-<name> upstream/dev`).
 2. Add the field, plus a translation key in `strings.json`, plus a row in `icons.json` if appropriate.
 3. Run `ruff format homeassistant tests`.
-4. If you can't write a test against your real device (snapshot-driven test fixtures live under `tests/components/yolink/`), copy the snapshot file from `device-<type>/snapshots/` into the test fixtures (with token already stripped by `discover_all.py`).
-
-## Safety notes
-
-- `discover_all.py` strips device `token` from `devices.json`.
-- Per-device snapshot files contain only state data (no token).
-- `events/*.jsonl` contains your home id in the topic and raw payloads but no auth secrets.
-- `.env` has UAID/secret_key — never commit.
+4. Tests: copy a sanitized snapshot from `device-<type>/snapshots/` into `tests/components/yolink/fixtures/` (token already stripped by `discover_all.py`).
+5. Push to fork (`git push -u origin yolink-<name>`), open PR via web.

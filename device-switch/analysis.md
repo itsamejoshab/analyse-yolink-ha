@@ -14,26 +14,31 @@ YS5706 = in-wall single-pole relay switch.
 
 No power, no energy, no pulse-mode entity.
 
-## CONFIRMED missing fields (YS5706 reports all of these)
+## Fields in raw data
 
-| Raw field                       | Suggested HA entity                       | Priority |
-|---------------------------------|--------------------------------------------|----------|
-| `state.power` (W)               | `current_power` sensor POWER, MEASUREMENT  | HIGH |
-| `state.watt` (kWh, /100 like Outlet) | `power_consumption` sensor ENERGY, TOTAL | HIGH |
-| `state.pulseMode.enable` (bool) | `pulse_mode_enabled` switch (config) / sensor | MED |
-| `state.pulseMode.duration` (ms) | `pulse_duration` number/sensor             | MED |
-| `state.battery` (-1 means N/A)  | suppress entity when -1                    | n/a  |
+| Raw field                       | Status / suggested entity                  | Priority |
+|---------------------------------|---------------------------------------------|----------|
+| `state.power` (W)               | **ALWAYS 0, no measurement hardware** -- skip | INVALID |
+| `state.watt` (kWh)              | **ALWAYS 0, no measurement hardware** -- skip | INVALID |
+| `state.pulseMode.enable` (bool) | `pulse_mode_enabled` switch (config)        | MED |
+| `state.pulseMode.duration` (ms) | `pulse_duration` number                     | MED |
+| `state.battery` (-1 = N/A)      | suppress entity when -1                     | n/a  |
+
+## Verified 2026-05-04
+
+Live test against `entry_fan_relay` (YS5706-UC):
+- Toggled to `open` via getState polls
+- `power=0, watt=0` throughout
+
+YS5706-UC firmware has the same `power`/`watt` schema fields as the
+power-monitoring outlets, but lacks the current-sensing chip. The Switch
+device type cannot reliably expose power/energy entities.
 
 ## Suggested PR
 
-**One PR (highest impact for least diff):** add `power` and `watt` sensors
-for `device_type == ATTR_DEVICE_SWITCH and model in [YS5706-UC, YS5706-EC]`.
+`pulseMode.enable` + `pulseMode.duration` could be a follow-up PR to
+expose the relay's momentary-press configuration. Requires setter
+support in `yolink-api` first (currently no public method to set
+pulseMode). Defer until that lands upstream.
 
-Pattern is identical to existing `power`/`watt` exists_fn for
-`POWER_SUPPORT_MODELS` outlets. Either:
-- add a new `SWITCH_POWER_SUPPORT_MODELS` constant, or
-- add YS5706 to `POWER_SUPPORT_MODELS` and broaden `exists_fn` to match
-  device_type in {Outlet, Switch}. Latter is cleaner.
-
-A second follow-up PR can add `pulseMode` as switch+number for relay
-"momentary press" mode (handy for garage door wiring use cases).
+No high-priority PRs from this device type after live verification.

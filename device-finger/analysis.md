@@ -15,22 +15,22 @@ Models in this home: **YS4908-UC** (2 devices, "Finger 1", "Finger 2")
 `fetchState` returns mostly empty. The Finger only emits a meaningful
 payload when **pressed**, so static snapshots are uninformative.
 
-To find missing fields here, **run `mqtt_listen_all.py 30`** then
-press each Finger from the YoLink app AND with a registered fingerprint.
-Then check `events/Finger_1.jsonl` for the `setState` / `StatusChange`
-event payload — the fingerprint id and event source are likely there
-but only on press events.
+## CONFIRMED via captured `Finger.setState` push event (Finger_2, 2026-05-04)
 
-## Hypothesized missing fields (verify via MQTT)
+Press payload (after press completes):
+```json
+{"state":"stop","battery":4,"version":"0830",
+ "time":"2026-04-04T07:21:49.000Z","loraInfo":{"signal":-73,...}}
+```
 
-- [ ] `fingerprintId` / `userId` in press event payload
-- [ ] `pressType` (fingerprint vs app vs button)
-- [ ] `lastPressedTime` timestamp
+**No fingerprint ID in this `setState` event.** Possibilities:
+- Fingerprint metadata may live in a `StatusChange` or `Report` event we haven't captured yet (would need to press via fingerprint specifically and watch for events with different `event` types)
+- The YoLink cloud API may not expose fingerprint ID at all (only the YoLink app might know which user pressed)
+- Different firmware versions may differ
 
-If confirmed, **fingerprint-id-as-event** would be very high value.
-Fires `yolink_event` with the fingerprint id so HA can route on which
-person triggered it.
+Need more capture: press via fingerprint (not app), capture both
+`StatusChange` and any other event types, before drawing conclusions.
 
 ## Suggested PR
 
-Defer until MQTT capture confirms event payload schema.
+Defer until additional MQTT capture answers the fingerprint-id question.

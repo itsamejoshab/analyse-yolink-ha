@@ -14,16 +14,39 @@ Models in this home: **YS6602-UC** (1: plug_misc), **YS6604-UC** (2: Attic Fan P
 
 ## CONFIRMED missing entities
 
-### #1 (highest impact, smallest diff): YS6604 power monitoring
+### ~~#1: YS6604 power monitoring~~  -- INVALID (verified 2026-05-04)
 
-YS6604-UC reports both `state.power` and `state.watt` in fetchState
-(values 0/0 in this snapshot because nothing was drawing) but the
-integration excludes YS6604 from `POWER_SUPPORT_MODELS` in
-`core/homeassistant/components/yolink/sensor.py`.
+Live-load test with `poll_live.py "Attic Fan Power" 15`:
+- Toggled outlet to `open`, fans drawing real load
+- 4 consecutive `Outlet.getState` polls all returned `power=0, watt=0`
+- Full payload contained no other power/energy fields
+- MQTT push events on toggle (`Outlet.setState`) also contained only
+  `state` + `loraInfo` -- no `power`/`watt`
 
-**Fix:** add `DEV_MODEL_PLUG_YS6604_UC` and `DEV_MODEL_PLUG_YS6604_EC`
-to `const.py` and append them to `POWER_SUPPORT_MODELS`.
-**Two-line PR.** Affects every YS6604 outdoor plug user globally.
+Conclusion: YS6604-UC firmware exposes `power`/`watt` keys but the
+**device has no current-sensing hardware**. The integration's existing
+`POWER_SUPPORT_MODELS` whitelist correctly excludes YS6604. **Do not PR.**
+
+YS6602-UC (`plug_misc`), in contrast, reported `watt=40` cumulative kWh
+in the snapshot - it does measure. Already in `POWER_SUPPORT_MODELS`.
+
+### #2 (still valid): Add YS6602-UC/EC to `coreTemperature` exists_fn
+
+YS6602-UC `plug_misc` snapshot shows `state.coreTemperature: 37`. The
+existing entity in `sensor.py` is whitelisted to YS6614 only:
+
+```python
+exists_fn=lambda device: (
+    device.device_model_name
+    in [DEV_MODEL_PLUG_YS6614_EC, DEV_MODEL_PLUG_YS6614_UC]
+),
+```
+
+**Fix:** add `DEV_MODEL_PLUG_YS6602_UC` and `DEV_MODEL_PLUG_YS6602_EC`
+to that list. ~3-line PR. Affects every YS6602 user worldwide.
+
+Same likely true for YS6803 (also a power-monitoring plug). Need a
+YS6803 snapshot to confirm before including in same PR.
 
 ### #2: alertType binary sensors (all Outlet models, both YS6602 and YS6604)
 
