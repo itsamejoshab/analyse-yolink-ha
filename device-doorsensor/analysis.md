@@ -12,12 +12,12 @@ Models in this home: **YS7704-UC, YS7706-UC** (6 devices)
 
 ## CONFIRMED missing fields (all 6 devices report these in fetchState)
 
-| Raw field                   | Suggested HA entity                       | Platform | Priority |
-|-----------------------------|--------------------------------------------|----------|----------|
-| `state.stateChangedAt` (epoch ms) | `last_state_change` timestamp sensor | sensor (TIMESTAMP) | HIGH |
-| `state.openRemindDelay` (sec) | `open_reminder_delay`  number/sensor      | number   | MED |
-| `state.delay` (sec)         | `auto_close_delay`       number/sensor    | number   | MED |
-| `state.alertInterval` (sec) | `alert_interval`         sensor diagnostic | sensor  | LOW |
+| Raw field                   | Note                                                  |
+|-----------------------------|-------------------------------------------------------|
+| `state.stateChangedAt` (epoch ms) | Skip -- HA `last_changed` covers this use case |
+| `state.openRemindDelay` (sec) | Config value; needs setter support to expose as `number` |
+| `state.delay` (sec)         | Config value; same as above                            |
+| `state.alertInterval` (sec) | Config value; same as above                            |
 
 ## CONFIRMED via captured `DoorSensor.Alert` push event (Garage_Boat, 2026-05-04)
 
@@ -27,19 +27,22 @@ Push payload on door open:
  "loraInfo":{"signal":-107,...},"stateChangedAt":1777908102507}
 ```
 
-Two notable observations:
-- `stateChangedAt` IS present in the push event (1777908102507 = 2026-05-04T15:21:42Z) -- confirms it updates on state change. Verifies `last_state_change` PR is viable.
-- `alertType` (e.g. `"normal"`) appears in push events but NOT in fetchState. Other possible values (`"tamper"`, ...) need to be observed. Could be a useful diagnostic sensor / state attribute later.
+Notable: `alertType` (e.g. `"normal"`) appears in push events but NOT in
+fetchState. Other possible values (`"tamper"`, `"openRemind"`, ...) need
+to be observed. If a non-`"normal"` value ever appears, it could be a
+useful diagnostic binary_sensor (e.g. tamper PROBLEM class).
 
-**No** `alarm.lowBattery` field on these models (battery low is inferred
-from `battery == 0`).
-**No** `devTemperature` on YS7704/YS7706.
+## Notes
 
-## Suggested PR
+- **No** `alarm.lowBattery` field on these models (battery low is
+  inferred from `battery == 0`).
+- **No** `devTemperature` on YS7704/YS7706.
 
-Single small PR adding `last_state_change` timestamp sensor (TIMESTAMP
-device class). Hugely useful for "alert if door open more than X minutes"
-automations. Same shape as proposed for THSensor `stateChangedAt`.
+## Conclusion
 
-The other three (delay/openRemindDelay/alertInterval) only useful once
-the integration also supports configuring them; can be a follow-up.
+No high-value PRs from DoorSensor right now. HA's built-in
+`last_changed` covers timestamp use cases. Config fields (`delay`,
+`openRemindDelay`, `alertInterval`) need yolink-api setter support
+before they're useful as `number` entities.
+
+Watch for `alertType != "normal"` in future captures.

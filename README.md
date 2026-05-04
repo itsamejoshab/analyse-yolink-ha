@@ -112,8 +112,13 @@ under expected conditions. Use `poll_live.py` while exercising the
 device. For binary alarm flags, force the alarm to fire (or wait for it
 naturally) before assuming the field works.
 
-For state-derived sensors (e.g. `stateChangedAt` timestamps), the
-snapshot already proves they update -- those are safe to PR directly.
+For numeric sensors with values that vary on every poll (e.g.
+`coreTemperature`), the snapshot already proves they update -- those
+are safe to PR without further verification.
+
+(Note: don't bother PRing yolink-side timestamps like `stateChangedAt`.
+Home Assistant's built-in `last_changed` / `last_updated` per entity
+already covers that use case.)
 
 ## Layout
 

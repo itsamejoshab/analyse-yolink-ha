@@ -18,8 +18,16 @@ Each candidate PR is tagged by VERIFICATION STATUS, not optimism:
 
 | PR | Device types | Source | Notes |
 |----|---|---|---|
-| **`last_state_change` timestamp sensor** | DoorSensor, LeakSensor, MotionSensor, THSensor | `state.stateChangedAt` (epoch ms) | Universal across types. Confirmed updating: captured DoorSensor.Alert with `stateChangedAt: 1777908102507` matching the wall-clock event time. ~30 line PR, 4 device types covered. Highest-value single PR. |
 | **Add YS6602-UC/EC to `coreTemperature` exists_fn** | Outlet | `state.coreTemperature` (snapshot showed `37` on `plug_misc`) | 3-line diff in `sensor.py`. Existing entity simply needs YS6602 added to its `exists_fn` whitelist (currently YS6614 only). |
+
+### Considered and dropped
+
+`stateChangedAt` -> `last_state_change` timestamp sensor across DoorSensor /
+LeakSensor / MotionSensor / THSensor: rejected. Home Assistant already
+exposes `last_changed` / `last_updated` for every entity automatically,
+covering the same use case. The yolink-reported timestamp could differ
+in edge cases (HA offline, hub buffered events) but not enough to
+justify duplicate entities for every device.
 
 ## NEEDS VERIFICATION (do not PR until field observed non-default)
 
@@ -66,9 +74,13 @@ under expected conditions BEFORE writing the PR. Use `poll_live.py`
 while exercising the device.
 
 For binary alarm flags, force the alarm to fire (or wait for it
-naturally) before assuming the field works. For state-derived sensors
-(e.g. `stateChangedAt` timestamps), the snapshot already proves they
-update -- those are safe to PR directly.
+naturally) before assuming the field works. For numeric sensors that
+vary every poll (e.g. `coreTemperature`), the snapshot already proves
+they update -- safe to PR directly.
+
+Skip yolink-side timestamps (`stateChangedAt`, etc.). Home Assistant's
+built-in `last_changed` / `last_updated` per entity already covers
+those use cases without needing duplicate sensors.
 
 ## Process for filing PRs
 

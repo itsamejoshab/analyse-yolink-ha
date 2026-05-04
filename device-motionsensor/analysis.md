@@ -15,7 +15,7 @@ Models in this home: **YS7805-UC** (1 device, "motion_kiwi")
 
 | Raw field                       | Suggested HA entity                       | Platform | Priority |
 |---------------------------------|--------------------------------------------|----------|----------|
-| `state.stateChangedAt` (epoch ms) | `last_motion`            timestamp sensor | sensor   | HIGH |
+| `state.stateChangedAt` (epoch ms) | Skip -- HA `last_changed` covers this  | -        | -    |
 | `state.nomotionDelay` (sec)     | `no_motion_delay`        number/sensor    | number   | MED |
 | `state.alertInterval` (sec)     | `alert_interval`         sensor diagnostic | sensor  | LOW |
 | `state.ledAlarm` (bool)         | `led_alarm`              switch (config)  | switch   | MED |
@@ -25,10 +25,9 @@ Models in this home: **YS7805-UC** (1 device, "motion_kiwi")
 **No `lux`** field on YS7805 :(  Some newer PIR variants do have it; if
 you ever pick up a YS7806 or PIR-PRO, run `discover_all.py` again.
 
-## Suggested PR
+## Conclusion
 
-`last_motion` timestamp sensor. Most useful single addition for users
-("when did this room last see movement"). Pattern reusable across
-DoorSensor, LeakSensor, MotionSensor — propose a single helper PR
-that adds `stateChangedAt` -> `last_state_change` timestamp sensor for
-all three at once.
+No high-value PRs from MotionSensor right now. All remaining candidates
+are config fields (`nomotionDelay`, `sensitivity`, `ledAlarm`,
+`alertInterval`) that need yolink-api setter support before they're
+useful as `number` / `select` / `switch` entities.
