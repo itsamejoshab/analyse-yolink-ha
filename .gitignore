@@ -1,0 +1,27 @@
+# Secrets
+.env
+.env.local
+*.secret
+
+# Captured device data (personal, contains deviceIds, gateway IDs, etc.)
+device-*/snapshots/
+device-*/events/
+devices.json
+
+# Old sprinkler dev artifacts (pre-existing)
+device-sprinklerv2/sprinkler_poll_log.json
+device-sprinklerv2/sprinkler_poll_log.jsonl
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Editors / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
